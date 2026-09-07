@@ -108,7 +108,7 @@ const corsOptions = {
         if (!origin) {
             return callback(null, true);
         }
-        
+
         // Development
         if (origin.includes('localhost')) {
             return callback(null, true);
@@ -119,16 +119,16 @@ const corsOptions = {
         if (origin.includes('127.0.0.1')) {
             return callback(null, true);
         }
-        
+
         // Production
-        const allowedOrigins = process.env.ALLOWED_ORIGINS 
+        const allowedOrigins = process.env.ALLOWED_ORIGINS
             ? process.env.ALLOWED_ORIGINS.split(',')
-            : ['http://localhost:6001'];
-        
+            : ['http://localhost:6001', 'https://cypherx270.github.io'];
+
         if (allowedOrigins.includes(origin)) {
             return callback(null, true);
         }
-        
+
         console.log(`❌ CORS blocked: ${origin}`);
         callback(new Error(`Origin ${origin} not allowed by CORS`));
     },
@@ -136,9 +136,9 @@ const corsOptions = {
     optionsSuccessStatus: 200,
     methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS', 'PATCH'],
     allowedHeaders: [
-        'Content-Type', 
-        'Authorization', 
-        'X-Requested-With', 
+        'Content-Type',
+        'Authorization',
+        'X-Requested-With',
         'Cookie',
         'Accept',
         'Origin'
@@ -195,7 +195,7 @@ try {
 // ============================================
 app.get("/health", async (req, res) => {
     const dbStatus = database.getStatus();
-    
+
     res.json({
         success: true,
         message: "OK",
@@ -240,7 +240,7 @@ const PORT = process.env.PORT || 6001;
 
 const startServer = async () => {
     const dbStatus = database.getStatus();
-    
+
     const server = app.listen(PORT, "0.0.0.0", () => {
         console.log(`\n${'='.repeat(60)}`);
         console.log(`✅ BLOOD BANK SYSTEM`);
@@ -264,7 +264,7 @@ const startServer = async () => {
 
         server.close(async () => {
             console.log('✅ HTTP server closed');
-            
+
             try {
                 await database.disconnect();
                 console.log('✅ MongoDB connection closed');
