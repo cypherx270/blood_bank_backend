@@ -40,6 +40,6 @@ router.get(
 // ============================================
 // USER ROUTES
 // ============================================
-router.get('/', stockController.getAllStocks);
+router.get('/', protect,stockController.getAllStocks);
 
 module.exports = router;
