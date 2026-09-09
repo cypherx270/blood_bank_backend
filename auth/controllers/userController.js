@@ -22,7 +22,8 @@ class UserController {
     }
   }
 
-  // Login
+  // controllers/userController.js
+
   async login(req, res, next) {
     try {
       const { email, password, deviceId } = req.body;
@@ -37,22 +38,23 @@ class UserController {
         deviceId,
       );
 
+      // ✅ Cookie Options (Environment ပေါ်မူတည်ပြီး ပြောင်းမယ်)
+      const isProduction = process.env.NODE_ENV === 'production';
 
       const cookieOptions = {
         httpOnly: true,
-        secure: process.env.NODE_ENV === 'production', // Production မှာ သာ secure ဖြစ်စေရန်
-        sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+        secure: isProduction,  // Production မှသာ secure
+        sameSite: isProduction ? 'strict' : 'lax',  // Development မှာ lax
         maxAge: parseInt(process.env.COOKIE_MAX_AGE) || 30 * 24 * 60 * 60 * 1000,
         path: '/',
-        domain: process.env.COOKIE_DOMAIN || undefined,
-        // Cross-site isolation အတွက်
-        ...(process.env.NODE_ENV === 'production' && { partitioned: true })
+        domain: isProduction ? process.env.COOKIE_DOMAIN : undefined,
       };
 
+      // ✅ Cookie ထည့်တယ်
       res.cookie("refreshToken", result.refreshToken, cookieOptions);
 
-      // Remove refresh token from response body
-      delete result.refreshToken;
+      // ✅ Refresh Token ကို Response Body မှာထားပါ (မဖျက်ပါနဲ့)
+      // delete result.refreshToken;  // ← ဒါကိုဖယ်ပါ
 
       res.status(200).json(result);
     } catch (error) {
@@ -60,6 +62,54 @@ class UserController {
     }
   }
 
+  // Refresh Token
+  async refreshToken(req, res, next) {
+    try {
+      const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
+
+      if (!refreshToken) {
+        return res.status(400).json({
+          success: false,
+          message: "Refresh token is required",
+        });
+      }
+
+      const ipAddress = getClientIP(req);
+      const userAgent = getUserAgent(req);
+
+      const result = await userService.refreshAccessToken(
+        refreshToken,
+        ipAddress,
+        userAgent,
+      );
+
+      if (result.tokenRefreshed) {
+        const isProduction = process.env.NODE_ENV === 'production';
+        const cookieOptions = {
+          httpOnly: true,
+          secure: isProduction,
+          sameSite: isProduction ? 'strict' : 'lax',
+          maxAge: parseInt(process.env.COOKIE_MAX_AGE) || 30 * 24 * 60 * 60 * 1000,
+          path: '/',
+          domain: isProduction ? process.env.COOKIE_DOMAIN : undefined,
+        };
+        res.cookie("refreshToken", result.refreshToken, cookieOptions);
+      }
+
+      // ✅ Refresh Token ကို Response Body မှာထားပါ (မဖျက်ပါနဲ့)
+      // delete result.refreshToken;  // ← ဒါကိုဖယ်ပါ
+
+      res.status(200).json(result);
+    } catch (error) {
+      if (
+        error.message &&
+        (error.message.includes("Invalid") || error.message.includes("expired"))
+      ) {
+        res.clearCookie("refreshToken", { path: "/" });
+      }
+      next(error);
+    }
+  }
   // Refresh Token
   async refreshToken(req, res, next) {
     try {
@@ -82,12 +132,12 @@ class UserController {
         userAgent,
       );
       await auditService.log({
-            userId: result.userId,
-            action: 'REFRESH_TOKEN',
-            details: { tokenRefreshed: result.tokenRefreshed },
-            ipAddress: ipAddress,
-            userAgent: userAgent
-        });
+        userId: result.userId,
+        action: 'REFRESH_TOKEN',
+        details: { tokenRefreshed: result.tokenRefreshed },
+        ipAddress: ipAddress,
+        userAgent: userAgent
+      });
 
       if (result.tokenRefreshed) {
         const cookieOptions = {
