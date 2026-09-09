@@ -1,4 +1,5 @@
 // controllers/userController.js
+
 const userService = require("../services/userService");
 const auditService = require("../services/auditService");
 const securityService = require("../services/securityService");
@@ -9,7 +10,6 @@ class UserController {
   // AUTHENTICATION
   // ============================================
 
-  // Register
   async register(req, res, next) {
     try {
       const ipAddress = getClientIP(req);
@@ -22,8 +22,9 @@ class UserController {
     }
   }
 
-  // controllers/userController.js
-
+  // ============================================
+  // ✅ LOGIN (ပြင်ဆင်ပြီး)
+  // ============================================
   async login(req, res, next) {
     try {
       const { email, password, deviceId } = req.body;
@@ -38,16 +39,17 @@ class UserController {
         deviceId,
       );
 
-      // ✅ Cookie Options (Environment ပေါ်မူတည်ပြီး ပြောင်းမယ်)
       const isProduction = process.env.NODE_ENV === 'production';
+      const isRender = process.env.RENDER === 'true';
 
+      // ✅ GitHub Pages (Cross-Site) အတွက် Cookie Options
       const cookieOptions = {
         httpOnly: true,
-        secure: isProduction,  // Production မှသာ secure
-        sameSite: isProduction ? 'strict' : 'lax',  // Development မှာ lax
+        secure: isProduction && isRender,  // Render + Production မှသာ secure
+        sameSite: isRender ? 'none' : 'lax',  // Render ဆိုရင် 'none'
         maxAge: parseInt(process.env.COOKIE_MAX_AGE) || 30 * 24 * 60 * 60 * 1000,
         path: '/',
-        domain: isProduction ? process.env.COOKIE_DOMAIN : undefined,
+        domain: isRender ? '.onrender.com' : undefined,
       };
 
       // ✅ Cookie ထည့်တယ်
@@ -62,7 +64,9 @@ class UserController {
     }
   }
 
-  // Refresh Token
+  // ============================================
+  // ✅ REFRESH TOKEN (ပြင်ဆင်ပြီး)
+  // ============================================
   async refreshToken(req, res, next) {
     try {
       const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
@@ -83,54 +87,6 @@ class UserController {
         userAgent,
       );
 
-      if (result.tokenRefreshed) {
-        const isProduction = process.env.NODE_ENV === 'production';
-        const cookieOptions = {
-          httpOnly: true,
-          secure: isProduction,
-          sameSite: isProduction ? 'strict' : 'lax',
-          maxAge: parseInt(process.env.COOKIE_MAX_AGE) || 30 * 24 * 60 * 60 * 1000,
-          path: '/',
-          domain: isProduction ? process.env.COOKIE_DOMAIN : undefined,
-        };
-        res.cookie("refreshToken", result.refreshToken, cookieOptions);
-      }
-
-      // ✅ Refresh Token ကို Response Body မှာထားပါ (မဖျက်ပါနဲ့)
-      // delete result.refreshToken;  // ← ဒါကိုဖယ်ပါ
-
-      res.status(200).json(result);
-    } catch (error) {
-      if (
-        error.message &&
-        (error.message.includes("Invalid") || error.message.includes("expired"))
-      ) {
-        res.clearCookie("refreshToken", { path: "/" });
-      }
-      next(error);
-    }
-  }
-  // Refresh Token
-  async refreshToken(req, res, next) {
-    try {
-
-      const refreshToken = req.cookies?.refreshToken || req.body?.refreshToken;
-
-      if (!refreshToken) {
-        return res.status(400).json({
-          success: false,
-          message: "Refresh token is required",
-        });
-      }
-
-      const ipAddress = getClientIP(req);
-      const userAgent = getUserAgent(req);
-
-      const result = await userService.refreshAccessToken(
-        refreshToken,
-        ipAddress,
-        userAgent,
-      );
       await auditService.log({
         userId: result.userId,
         action: 'REFRESH_TOKEN',
@@ -140,20 +96,22 @@ class UserController {
       });
 
       if (result.tokenRefreshed) {
+        const isProduction = process.env.NODE_ENV === 'production';
+        const isRender = process.env.RENDER === 'true';
+
         const cookieOptions = {
           httpOnly: true,
-          secure: process.env.NODE_ENV === 'production', // Production မှာ သာ secure ဖြစ်စေရန်
-          sameSite: process.env.NODE_ENV === 'production' ? 'strict' : 'lax',
+          secure: isProduction && isRender,
+          sameSite: isRender ? 'none' : 'lax',
           maxAge: parseInt(process.env.COOKIE_MAX_AGE) || 30 * 24 * 60 * 60 * 1000,
           path: '/',
-          domain: process.env.COOKIE_DOMAIN || undefined,
-          // Cross-site isolation အတွက်
-          ...(process.env.NODE_ENV === 'production' && { partitioned: true })
+          domain: isRender ? '.onrender.com' : undefined,
         };
         res.cookie("refreshToken", result.refreshToken, cookieOptions);
       }
 
-      delete result.refreshToken;
+      // ❌ ဒါကိုဖယ်ပါ (Refresh Token ကို မဖျက်ပါနဲ့)
+      // delete result.refreshToken;
 
       res.status(200).json(result);
     } catch (error) {
@@ -166,10 +124,12 @@ class UserController {
       next(error);
     }
   }
-  // Logout
+
+  // ============================================
+  // LOGOUT
+  // ============================================
   async logout(req, res, next) {
     try {
-      // ✅ req.user ရှိမရှိ စစ်ပါ
       if (!req.user) {
         return res.status(401).json({
           success: false,
@@ -177,7 +137,6 @@ class UserController {
         });
       }
 
-      // ✅ refreshToken ကို safe ယူပါ (optional chaining)
       const refreshToken = req.cookies?.refreshToken;
       const ipAddress = getClientIP(req);
       const userAgent = getUserAgent(req);
@@ -200,11 +159,10 @@ class UserController {
   }
 
   // ============================================
-  // ✅ LOGOUT ALL - ပြင်ဆင်ပြီး
+  // LOGOUT ALL
   // ============================================
   async logoutAll(req, res, next) {
     try {
-      // ✅ req.user ရှိမရှိ စစ်ပါ
       if (!req.user) {
         return res.status(401).json({
           success: false,
@@ -230,11 +188,11 @@ class UserController {
       next(error);
     }
   }
+
   // ============================================
   // PROFILE MANAGEMENT
   // ============================================
 
-  // Get Profile
   async getProfile(req, res, next) {
     try {
       const user = await userService.getUserById(req.user._id);
@@ -247,12 +205,10 @@ class UserController {
     }
   }
 
-  // Update Profile
   async updateProfile(req, res, next) {
     try {
       const updatedUser = await userService.updateUser(req.user._id, req.body);
 
-      // Audit log
       await auditService.log({
         userId: req.user._id,
         action: "PROFILE_UPDATE",
@@ -271,7 +227,6 @@ class UserController {
     }
   }
 
-  // Change Password
   async changePassword(req, res, next) {
     try {
       const { currentPassword, newPassword } = req.body;
@@ -286,9 +241,7 @@ class UserController {
         userAgent,
       );
 
-      // Clear all cookies after password change - Path ကိုထည့်
-      res.clearCookie("refreshToken", { path: "/" }); // ← ✅ path ထည့်
-
+      res.clearCookie("refreshToken", { path: "/" });
       res.status(200).json(result);
     } catch (error) {
       next(error);
@@ -299,7 +252,6 @@ class UserController {
   // SECURITY & AUDIT
   // ============================================
 
-  // Get Security Score
   async getSecurityScore(req, res, next) {
     try {
       const score = await securityService.getSecurityScore(req.user._id);
@@ -312,7 +264,6 @@ class UserController {
     }
   }
 
-  // Get My Audit Logs
   async getMyAuditLogs(req, res, next) {
     try {
       const { limit = 50, skip = 0 } = req.query;
@@ -335,7 +286,6 @@ class UserController {
   // ADMIN - USER MANAGEMENT
   // ============================================
 
-  // Admin: Get All Users
   async getAllUsers(req, res, next) {
     try {
       const { role, status, isActive } = req.query;
@@ -350,7 +300,6 @@ class UserController {
     }
   }
 
-  // Admin: Get User by ID
   async getUserById(req, res, next) {
     try {
       const user = await userService.getUserById(req.params.id);
@@ -363,7 +312,6 @@ class UserController {
     }
   }
 
-  // Admin: Update User
   async adminUpdateUser(req, res, next) {
     try {
       const updatedUser = await userService.updateUser(req.params.id, req.body);
@@ -389,7 +337,6 @@ class UserController {
     }
   }
 
-  // Admin: Update User Role
   async updateUserRole(req, res, next) {
     try {
       const { role } = req.body;
@@ -404,7 +351,6 @@ class UserController {
     }
   }
 
-  // Admin: Update User Status
   async updateUserStatus(req, res, next) {
     try {
       const { status } = req.body;
@@ -419,7 +365,6 @@ class UserController {
     }
   }
 
-  // Admin: Delete User
   async deleteUser(req, res, next) {
     try {
       const result = await userService.deleteUser(req.params.id, req.user._id);
@@ -429,7 +374,6 @@ class UserController {
     }
   }
 
-  // Admin: Deactivate User
   async deactivateUser(req, res, next) {
     try {
       const result = await userService.deactivateUser(
@@ -442,7 +386,6 @@ class UserController {
     }
   }
 
-  // Admin: Activate User
   async activateUser(req, res, next) {
     try {
       const result = await userService.activateUser(
@@ -459,7 +402,6 @@ class UserController {
   // ADMIN - AUDIT LOGS
   // ============================================
 
-  // Admin: Get Audit Logs
   async getAuditLogs(req, res, next) {
     try {
       const {
@@ -490,7 +432,6 @@ class UserController {
     }
   }
 
-  // Admin: Get Audit Stats
   async getAuditStats(req, res, next) {
     try {
       const { days = 7 } = req.query;
